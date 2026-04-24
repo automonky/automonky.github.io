@@ -98,6 +98,13 @@
     let mediaStream = null;
     let isPiPActive = false;
 
+    function initStream() {
+      if (mediaStream) return;
+      mediaStream = clockCanvas.captureStream(30);
+      pipVideo.srcObject = mediaStream;
+      pipVideo.play().catch(() => {});
+    }
+
     function updateTime() {
       const now = new Date();
       const h = String(now.getHours()).padStart(2, '0');
@@ -133,24 +140,33 @@
 
     async function startPiP() {
       try {
-        if (mediaStream) {
-          mediaStream.getTracks().forEach(track => track.stop());
+        if (pipVideo.readyState < 2) {
+          if (mediaStream) {
+            mediaStream.getTracks().forEach(track => track.stop());
+          }
+          mediaStream = clockCanvas.captureStream(30);
+          pipVideo.srcObject = mediaStream;
+          await pipVideo.play();
         }
 
-        mediaStream = clockCanvas.captureStream(30);
-        pipVideo.srcObject = mediaStream;
-        pipVideo.src = '';
-
-        await pipVideo.play();
+        if (pipVideo.readyState < 2) {
+          alert('视频尚未就绪，请稍后再试');
+          return;
+        }
 
         if (pipVideo.webkitPresentationMode === 'picture-in-picture') {
           pipVideo.webkitSetPresentationMode('picture-in-picture');
+          pipHint.classList.add('hidden');
+          isPiPActive = true;
         } else if (document.pictureInPictureEnabled) {
-          await pipVideo.requestPictureInPicture();
+          pipVideo.requestPictureInPicture().then(() => {
+            pipHint.classList.add('hidden');
+            isPiPActive = true;
+          }).catch(err => {
+            console.error('PiP 启动失败:', err);
+            alert('画中画模式启动失败，请确保在 Safari 中打开并允许画中画权限');
+          });
         }
-
-        pipHint.classList.add('hidden');
-        isPiPActive = true;
       } catch (err) {
         console.error('PiP 启动失败:', err);
         alert('画中画模式启动失败，请确保在 Safari 中打开并允许画中画权限');
@@ -176,6 +192,7 @@
 
     setInterval(checkPiPState, 1000);
     setInterval(updateTime, 1);
+    initStream();
     updateTime();
   </script>
 </body>
