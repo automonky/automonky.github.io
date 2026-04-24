@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>悬浮时钟</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', sans-serif;
+  background: #000;
+  color: #fff;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+#clockCanvas {
+  position: absolute;
+  top: -9999px;
+  left: -9999px;
+}
+
+#previewCanvas {
+  border-radius: 24px;
+  box-shadow: 0 0 60px rgba(100, 180, 255, 0.15), 0 0 120px rgba(100, 180, 255, 0.05);
+}
+
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 32px;
+}
+
+.time-display {
+  font-size: 72px;
+  font-weight: 200;
+  letter-spacing: 4px;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 40px rgba(100, 180, 255, 0.3);
+}
+
+.date-display {
+  font-size: 18px;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.5);
+  letter-spacing: 2px;
+}
+
+.pip-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 36px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 50px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  font-size: 17px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  -webkit-tap-highlight-color: transparent;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.pip-btn:active {
+  transform: scale(0.96);
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.pip-btn svg {
+  width: 22px;
+  height: 22px;
+}
+
+.settings {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  max-width: 320px;
+  padding: 0 20px;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.setting-label {
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.setting-row select {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.toggle {
+  position: relative;
+  width: 51px;
+  height: 31px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  cursor: pointer;
+  transition: background 0.3s;
+  flex-shrink: 0;
+}
+
+.toggle.active {
+  background: #0a84ff;
+}
+
+.toggle::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 27px;
+  height: 27px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.3s;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+.toggle.active::after {
+  transform: translateX(20px);
+}
+
+.hint {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.3);
+  text-align: center;
+  line-height: 1.6;
+  padding: 0 20px;
+  max-width: 320px;
+}
+</style>
+</head>
+<body>
+
+<canvas id="clockCanvas" width="540" height="540"></canvas>
+<canvas id="previewCanvas" width="270" height="270"></canvas>
+
+<div class="container">
+  <div class="time-display" id="timeText">00:00:00</div>
+  <div class="date-display" id="dateText"></div>
+
+  <button class="pip-btn" id="pipBtn" onclick="togglePiP()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="2" y="3" width="20" height="14" rx="2"/>
+      <rect x="11" y="9" width="10" height="7" rx="1.5" fill="currentColor" opacity="0.3"/>
+    </svg>
+    开启悬浮时钟
+  </button>
+
+  <div class="settings">
+    <div class="setting-row">
+      <span class="setting-label">显示秒针</span>
+      <div class="toggle active" id="toggleSecond" onclick="toggleSetting('showSeconds', this)"></div>
+    </div>
+    <div class="setting-row">
+      <span class="setting-label">24小时制</span>
+      <div class="toggle active" id="toggle24h" onclick="toggleSetting('is24h', this)"></div>
+    </div>
+    <div class="setting-row">
+      <span class="setting-label">表盘样式</span>
+      <select id="styleSelect" onchange="clockStyle=this.value">
+        <option value="minimal">极简</option>
+        <option value="classic">经典</option>
+        <option value="neon">霓虹</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="hint">
+    点击上方按钮开启画中画模式<br>
+    悬浮时钟将显示在其他应用之上
+  </div>
+</div>
+
+<video id="pipVideo" playsinline muted style="position:absolute;top:-9999px;width:1px;height:1px;"></video>
+
+<script>
+const canvas = document.getElementById('clockCanvas');
+const ctx = canvas.getContext('2d');
+const previewCanvas = document.getElementById('previewCanvas');
+const previewCtx = previewCanvas.getContext('2d');
+const pipVideo = document.getElementById('pipVideo');
+const timeText = document.getElementById('timeText');
+const dateText = document.getElementById('dateText');
+
+let showSeconds = true;
+let is24h = true;
+let clockStyle = 'minimal';
+let pipActive = false;
+let stream = null;
+
+function toggleSetting(key, el) {
+  if (key === 'showSeconds') {
+    showSeconds = !showSeconds;
+  } else if (key === 'is24h') {
+    is24h = !is24h;
+  }
+  el.classList.toggle('active');
+}
+
+function drawClock() {
+  const W = canvas.width;
+  const H = canvas.height;
+  const cx = W / 2;
+  const cy = H / 2;
+  const R = Math.min(cx, cy) - 20;
+
+  const now = new Date();
+  const h = now.getHours();
+  const m = now.getMinutes();
+  const s = now.getSeconds();
+  const ms = now.getMilliseconds();
+
+  ctx.clearRect(0, 0, W, H);
+
+  if (clockStyle === 'minimal') {
+    drawMinimal(cx, cy, R, h, m, s, ms);
+  } else if (clockStyle === 'classic') {
+    drawClassic(cx, cy, R, h, m, s, ms);
+  } else if (clockStyle === 'neon') {
+    drawNeon(cx, cy, R, h, m, s, ms);
+  }
+
+  previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+  previewCtx.drawImage(canvas, 0, 0, previewCanvas.width, previewCanvas.height);
+
+  updateTimeDisplay(h, m, s);
+
+  requestAnimationFrame(drawClock);
+}
+
+function drawMinimal(cx, cy, R, h, m, s, ms) {
+  ctx.fillStyle = '#000000';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, R, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  for (let i = 0; i < 12; i++) {
+    const angle = (i / 12) * Math.PI * 2 - Math.PI / 2;
+    const len = i % 3 === 0 ? 16 : 8;
+    const r1 = R - len;
+    const r2 = R - 2;
+    ctx.beginPath();
+    ctx.moveTo(cx + r1 * Math.cos(angle), cy + r1 * Math.sin(angle));
+    ctx.lineTo(cx + r2 * Math.cos(angle), cy + r2 * Math.sin(angle));
+    ctx.strokeStyle = i % 3 === 0 ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.2)';
+    ctx.lineWidth = i % 3 === 0 ? 2.5 : 1.5;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+  }
+
+  const hAngle = ((h % 12) / 12 + m / 720 + s / 43200) * Math.PI * 2 - Math.PI / 2;
+  drawHand(cx, cy, hAngle, R * 0.5, 5, 'rgba(255,255,255,0.9)');
+
+  const mAngle = (m / 60 + s / 3600) * Math.PI * 2 - Math.PI / 2;
+  drawHand(cx, cy, mAngle, R * 0.72, 3, 'rgba(255,255,255,0.75)');
+
+  if (showSeconds) {
+    const sAngle = ((s + ms / 1000) / 60) * Math.PI * 2 - Math.PI / 2;
+    drawHand(cx, cy, sAngle, R * 0.82, 1.2, '#0a84ff');
+    drawHand(cx, cy, sAngle + Math.PI, R * 0.15, 1.2, '#0a84ff');
+  }
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+  ctx.fillStyle = '#0a84ff';
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, 2, 0, Math.PI * 2);
+  ctx.fillStyle = '#000';
+  ctx.fill();
+}
+
+function drawClassic(cx, cy, R, h, m, s, ms) {
+  ctx.fillStyle = '#1a1a1a';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const grad = ctx.createRadialGradient(cx, cy, R * 0.8, cx, cy, R);
+  grad.addColorStop(0, '#2a2a2a');
+  grad.addColorStop(1, '#1a1a1a');
+  ctx.beginPath();
+  ctx.arc(cx, cy, R, 0, Math.PI * 2);
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, R, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  const numerals = ['12','1','2','3','4','5','6','7','8','9','10','11'];
+  ctx.font = '600 22px -apple-system, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (let i = 0; i < 12; i++) {
+    const angle = (i / 12) * Math.PI * 2 - Math.PI / 2;
+    const r = R - 36;
+    ctx.fillText(numerals[i], cx + r * Math.cos(angle), cy + r * Math.sin(angle));
+  }
+
+  for (let i = 0; i < 60; i++) {
+    const angle = (i / 60) * Math.PI * 2 - Math.PI / 2;
+    const isHour = i % 5 === 0;
+    const len = isHour ? 14 : 6;
+    const r1 = R - 12 - len;
+    const r2 = R - 12;
+    ctx.beginPath();
+    ctx.moveTo(cx + r1 * Math.cos(angle), cy + r1 * Math.sin(angle));
+    ctx.lineTo(cx + r2 * Math.cos(angle), cy + r2 * Math.sin(angle));
+    ctx.strokeStyle = isHour ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.15)';
+    ctx.lineWidth = isHour ? 2 : 1;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+  }
+
+  const hAngle = ((h % 12) / 12 + m / 720 + s / 43200) * Math.PI * 2 - Math.PI / 2;
+  drawHand(cx, cy, hAngle, R * 0.45, 6, 'rgba(255,255,255,0.9)');
+
+  const mAngle = (m / 60 + s / 3600) * Math.PI * 2 - Math.PI / 2;
+  drawHand(cx, cy, mAngle, R * 0.65, 4, 'rgba(255,255,255,0.8)');
+
+  if (showSeconds) {
+    const sAngle = ((s + ms / 1000) / 60) * Math.PI * 2 - Math.PI / 2;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + R * 0.75 * Math.cos(sAngle), cy + R * 0.75 * Math.sin(sAngle));
+    ctx.strokeStyle = '#ff3b30';
+    ctx.lineWidth = 1.5;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + R * 0.18 * Math.cos(sAngle + Math.PI), cy + R * 0.18 * Math.sin(sAngle + Math.PI));
+    ctx.stroke();
+  }
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+  ctx.fillStyle = showSeconds ? '#ff3b30' : '#fff';
+  ctx.fill();
+}
+
+function drawNeon(cx, cy, R, h, m, s, ms) {
+  ctx.fillStyle = '#05050a';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.shadowBlur = 20;
+  ctx.shadowColor = '#00d4ff';
+  ctx.beginPath();
+  ctx.arc(cx, cy, R, 0, Math.PI * 2);
+  ctx.strokeStyle = '#00d4ff';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  ctx.shadowBlur = 8;
+  ctx.shadowColor = '#00d4ff';
+  for (let i = 0; i < 12; i++) {
+    const angle = (i / 12) * Math.PI * 2 - Math.PI / 2;
+    const len = i % 3 === 0 ? 20 : 10;
+    const r1 = R - len;
+    const r2 = R - 2;
+    ctx.beginPath();
+    ctx.moveTo(cx + r1 * Math.cos(angle), cy + r1 * Math.sin(angle));
+    ctx.lineTo(cx + r2 * Math.cos(angle), cy + r2 * Math.sin(angle));
+    ctx.strokeStyle = i % 3 === 0 ? '#00d4ff' : 'rgba(0,212,255,0.4)';
+    ctx.lineWidth = i % 3 === 0 ? 3 : 1.5;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+  }
+  ctx.shadowBlur = 0;
+
+  const hAngle = ((h % 12) / 12 + m / 720 + s / 43200) * Math.PI * 2 - Math.PI / 2;
+  ctx.shadowBlur = 15;
+  ctx.shadowColor = '#ff00ff';
+  drawHand(cx, cy, hAngle, R * 0.5, 5, '#ff00ff');
+
+  const mAngle = (m / 60 + s / 3600) * Math.PI * 2 - Math.PI / 2;
+  ctx.shadowColor = '#00ff88';
+  drawHand(cx, cy, mAngle, R * 0.72, 3, '#00ff88');
+
+  if (showSeconds) {
+    const sAngle = ((s + ms / 1000) / 60) * Math.PI * 2 - Math.PI / 2;
+    ctx.shadowColor = '#ffaa00';
+    drawHand(cx, cy, sAngle, R * 0.82, 1.5, '#ffaa00');
+  }
+  ctx.shadowBlur = 0;
+
+  ctx.shadowBlur = 10;
+  ctx.shadowColor = '#00d4ff';
+  ctx.beginPath();
+  ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+  ctx.fillStyle = '#00d4ff';
+  ctx.fill();
+  ctx.shadowBlur = 0;
+}
+
+function drawHand(cx, cy, angle, length, width, color) {
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx + length * Math.cos(angle), cy + length * Math.sin(angle));
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+}
+
+function updateTimeDisplay(h, m, s) {
+  let hours = h;
+  let suffix = '';
+  if (!is24h) {
+    suffix = h >= 12 ? ' PM' : ' AM';
+    hours = h % 12 || 12;
+  }
+  const timeStr = showSeconds
+    ? `${pad(hours)}:${pad(m)}:${pad(s)}${suffix}`
+    : `${pad(hours)}:${pad(m)}${suffix}`;
+  timeText.textContent = timeStr;
+
+  const now = new Date();
+  const weekdays = ['星期日','星期一','星期二','星期三','星期四','星期五','星期六'];
+  dateText.textContent = `${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日 ${weekdays[now.getDay()]}`;
+}
+
+function pad(n) {
+  return n.toString().padStart(2, '0');
+}
+
+async function togglePiP() {
+  const btn = document.getElementById('pipBtn');
+
+  if (pipActive) {
+    if (document.pictureInPictureElement) {
+      try {
+        await document.exitPictureInPicture();
+      } catch(e) {}
+    }
+    return;
+  }
+
+  try {
+    if (!stream) {
+      stream = canvas.captureStream(30);
+      pipVideo.srcObject = stream;
+      await pipVideo.play();
+    }
+
+    if (pipVideo.requestPictureInPicture) {
+      await pipVideo.requestPictureInPicture();
+      pipActive = true;
+      btn.innerHTML = `
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="3" width="20" height="14" rx="2"/>
+          <rect x="11" y="9" width="10" height="7" rx="1.5" fill="currentColor" opacity="0.3"/>
+        </svg>
+        关闭悬浮时钟`;
+    } else {
+      alert('当前浏览器不支持画中画功能，请使用 iOS Safari 并升级至最新版本');
+    }
+  } catch (err) {
+    console.error('PiP Error:', err);
+    alert('无法开启画中画：' + err.message);
+  }
+}
+
+pipVideo.addEventListener('leavepictureinpicture', () => {
+  pipActive = false;
+  const btn = document.getElementById('pipBtn');
+  btn.innerHTML = `
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="2" y="3" width="20" height="14" rx="2"/>
+      <rect x="11" y="9" width="10" height="7" rx="1.5" fill="currentColor" opacity="0.3"/>
+    </svg>
+    开启悬浮时钟`;
+});
+
+drawClock();
+</script>
+</body>
+</html>
