@@ -460,6 +460,13 @@ function pad(n) {
   return n.toString().padStart(2, '0');
 }
 
+function initStream() {
+  if (stream) return;
+  stream = canvas.captureStream(30);
+  pipVideo.srcObject = stream;
+  pipVideo.play().catch(() => {});
+}
+
 async function togglePiP() {
   const btn = document.getElementById('pipBtn');
 
@@ -479,15 +486,24 @@ async function togglePiP() {
       await pipVideo.play();
     }
 
+    if (pipVideo.readyState < 2) {
+      alert('视频尚未就绪，请稍后再试');
+      return;
+    }
+
     if (pipVideo.requestPictureInPicture) {
-      await pipVideo.requestPictureInPicture();
-      pipActive = true;
-      btn.innerHTML = `
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="2" y="3" width="20" height="14" rx="2"/>
-          <rect x="11" y="9" width="10" height="7" rx="1.5" fill="currentColor" opacity="0.3"/>
-        </svg>
-        关闭悬浮时钟`;
+      pipVideo.requestPictureInPicture().then(() => {
+        pipActive = true;
+        btn.innerHTML = `
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="3" width="20" height="14" rx="2"/>
+            <rect x="11" y="9" width="10" height="7" rx="1.5" fill="currentColor" opacity="0.3"/>
+          </svg>
+          关闭悬浮时钟`;
+      }).catch(err => {
+        console.error('PiP Error:', err);
+        alert('无法开启画中画：' + err.message);
+      });
     } else {
       alert('当前浏览器不支持画中画功能，请使用 iOS Safari 并升级至最新版本');
     }
@@ -508,6 +524,7 @@ pipVideo.addEventListener('leavepictureinpicture', () => {
     开启悬浮时钟`;
 });
 
+initStream();
 drawClock();
 </script>
 </body>
